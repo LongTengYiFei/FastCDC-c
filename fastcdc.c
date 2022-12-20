@@ -3,35 +3,20 @@
 // USE_CHUNKING_METHOD
 #define USE_CHUNKING_METHOD 1
 
-int chunk0_4 = 0, chunk4_8 = 0, chunk8_12 = 0;
-int chunk12_16 = 0, chunk16_20 = 0, chunk20_24 = 0;
-int chunk24_28 = 0, chunk28_32 = 0;
-float chunk_summ = 0;
+#define MAX_CHUNK_SIZE 64
+int chunk_num[MAX_CHUNK_SIZE];
 void insertChunkLength(int chunkLength){
-    if(chunkLength <= 4*1024)
-        chunk0_4++;
-    if(4*1024 <= chunkLength && chunkLength <= 8*1024)
-        chunk4_8++;
-    if(8*1024 <= chunkLength && chunkLength <= 12*1024)
-        chunk8_12++;
-    if(12*1024 <= chunkLength && chunkLength <= 16*1024)
-        chunk12_16++;
-    if(16*1024 <= chunkLength && chunkLength <= 20*1024)
-        chunk16_20++;
-    if(20*1024 <= chunkLength && chunkLength <= 24*1024)
-        chunk20_24++;
-    if(24*1024 <= chunkLength && chunkLength <= 28*1024)
-        chunk24_28++;
-    if(28*1024 <= chunkLength && chunkLength <= 32*1024)
-        chunk28_32++;
+    for(int i=0; i<=MAX_CHUNK_SIZE-1; i++){
+        if( i*1024 <= chunkLength && chunkLength <(i+1)*1024){
+            chunk_num[i]++;
+        }
+    }
 }
 
-void printChunkLengthStatistic(){
-    printf("-- chunk size distribution --");
-    printf("%.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f\n",
-    chunk0_4/chunk_summ*100, chunk4_8/chunk_summ*100, chunk8_12/chunk_summ*100,
-    chunk12_16/chunk_summ*100, chunk16_20/chunk_summ*100, chunk20_24/chunk_summ*100,
-    chunk24_28/chunk_summ*100, chunk28_32/chunk_summ*100);
+void printChunkLengthStatistic(int max_chunk_size){
+    printf("-- chunk size distribution --\n");
+    for(int i=0; i<=MAX_CHUNK_SIZE-1; i++)
+        printf("%dkb - %dkb num is %d\n", i, i+1, chunk_num[i]);
 }
 
 int main(int argc, char** argv) {
@@ -136,8 +121,7 @@ int main(int argc, char** argv) {
     printf("sum chunk length is %lld\n", sum_chunk_length);
     printf("small chunknum is %d\n", smalChkCnt);
 
-    chunk_summ = chunk_num;
-    printChunkLengthStatistic();
+    printChunkLengthStatistic(64);
     // clear the items
     free(fileCache);
     // fileCache = NULL;
