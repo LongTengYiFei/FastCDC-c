@@ -1,9 +1,8 @@
 #include "fastcdc.h"
 
-// USE_CHUNKING_METHOD
-#define USE_CHUNKING_METHOD 1
-
+#define USE_CHUNKING_METHOD ORIGIN_CDC
 #define MAX_CHUNK_SIZE 64
+
 int chunk_num[MAX_CHUNK_SIZE];
 void insertChunkLength(int chunkLength){
     for(int i=0; i<=MAX_CHUNK_SIZE-1; i++){
@@ -15,8 +14,11 @@ void insertChunkLength(int chunkLength){
 
 void printChunkLengthStatistic(int max_chunk_size){
     printf("-- chunk size distribution --\n");
+    // for(int i=0; i<=MAX_CHUNK_SIZE-1; i++)
+    //     printf("%dkb - %dkb num is %d\n", i, i+1, chunk_num[i]);
     for(int i=0; i<=MAX_CHUNK_SIZE-1; i++)
-        printf("%dkb - %dkb num is %d\n", i, i+1, chunk_num[i]);
+        printf("%d ", chunk_num[i]);
+    printf("\n");
 }
 
 int main(int argc, char** argv) {
@@ -26,17 +28,14 @@ int main(int argc, char** argv) {
 
     // codes below are just for testing
     FILE *random_file;
-    uint8_t SHA1_digest[20];
-    uLong weakHash;
     size_t readStatus = 0;
 
-    
     int chunk_num = 0;
     unsigned char *fileCache = (unsigned char *)malloc(CacheSize);
     memset(fileCache, 0, sizeof(CacheSize));
 
     int offset = 0, chunkLength = 0, readFlag = 0;
-    fastCDC_init();
+    fastCDC_init(4096);
 
     random_file = fopen(random_file_path, "r+");
     if (random_file == NULL) {
@@ -47,7 +46,7 @@ int main(int argc, char** argv) {
     fseek(random_file, 0, SEEK_END); // seek to end of file
     int file_size = ftell(random_file); // get current file pointer
     fseek(random_file, 0, SEEK_SET); 
-    printf("file size is %d\n", file_size);
+    //printf("file size is %d\n", file_size);
     int end = file_size - 1;
 
     readStatus = fread(fileCache, 1, CacheSize, random_file);
@@ -55,8 +54,9 @@ int main(int argc, char** argv) {
     switch (USE_CHUNKING_METHOD)
     {
         case ORIGIN_CDC:
-            chunking = cdc_origin_64;
-            printf("gear mask = %x\n", FING_GEAR_08KB_64);
+            chunking = GearCDC_OptimizedHashJudgement;
+            printf("You choose the GearCDC with Optimized hash judgement.\n");
+            printf("Gear mask = 0x%x\n", FING_GEAR_08KB_64);
             break;
 
         case ROLLING_2Bytes:
@@ -80,16 +80,16 @@ int main(int argc, char** argv) {
     
     for (;;) {
         if((end - offset + 1) == 0){
-            printf("rest size is 0, last chunk size = %d\n", chunkLength);
+            //printf("rest size is 0, last chunk size = %d\n", chunkLength);
             break;
         }
             
         gettimeofday(&tmStart, NULL);
         chunkLength = chunking(fileCache + offset, end - offset + 1); 
-        //printf("%d\n", chunkLength);
         gettimeofday(&tmEnd, NULL);
-        totalTm += ((tmEnd.tv_sec - tmStart.tv_sec) * 1000000 +
-                    (tmEnd.tv_usec - tmStart.tv_usec));  //微秒
+
+        totalTm += ((tmEnd.tv_sec - tmStart.tv_sec) * 1000000 + (tmEnd.tv_usec - tmStart.tv_usec));  //微秒
+
         insertChunkLength(chunkLength);
         chunk_num += 1;
         sum_chunk_length += chunkLength;
@@ -116,43 +116,28 @@ int main(int argc, char** argv) {
         }   
     }
 
-    printf("totalTime is %f ms\n", totalTm / 1000);
-    printf("chunknum is %d\n", chunk_num);
-    printf("sum chunk length is %lld\n", sum_chunk_length);
-    printf("small chunknum is %d\n", smalChkCnt);
+    // printf("totalTime is %f ms\n", totalTm / 1000);
+    // printf("chunknum is %d\n", chunk_num);
+    // printf("sum chunk length is %lld\n", sum_chunk_length);
+    // printf("small chunknum is %d\n", smalChkCnt);
 
     printChunkLengthStatistic(64);
     // clear the items
     free(fileCache);
-    // fileCache = NULL;
     return 0;
 }
 
 // functions
-void fastCDC_init(void) {
-    unsigned char md5_digest[16];
-    uint8_t seed[SeedLength];
-    for (int i = 0; i < SymbolCount; i++) {
-
-        for (int j = 0; j < SeedLength; j++) {
-            seed[j] = i;
-        }
-
-        g_global_matrix[i] = 0;
-        MD5(seed, SeedLength, md5_digest);
-        memcpy(&(g_global_matrix[i]), md5_digest, 4);
-        g_global_matrix_left[i] = g_global_matrix[i] << 1;
-    }
-
+void fastCDC_init(int expected_chunk_size) {
     // 64 bit init
     for (int i = 0; i < SymbolCount; i++) {
         LEARv2[i] = GEARv2[i] << 1;
     }
 
-    MinSize = 8192 / 4;
-    MaxSize = 8192 * 4;    // 32768;
-    Mask_15 = 0xf9070353;  //  15个1
-    Mask_11 = 0xd9000353;  //  11个1
+    MinSize = expected_chunk_size / 4;
+    MaxSize = expected_chunk_size * 8;    
+    Mask_15 = 0xf9070353;
+    Mask_11 = 0xd9000353;
     Mask_11_64 = 0x0000d90003530000;
     Mask_15_64 = 0x0000f90703530000;
     MinSize_divide_by_2 = MinSize / 2;
@@ -160,9 +145,10 @@ void fastCDC_init(void) {
 
 int normalized_chunking_64(unsigned char *p, int n) {
     uint64_t fingerprint = 0, digest;
-    MinSize = 6 * 1024;
-    int i = MinSize, Mid = 8 * 1024;
-
+    int Mid = 8 * 1024;
+    MinSize = Mid / 4;
+    MaxSize = Mid * 8;
+    int i = MinSize;
     // the minimal subChunk Size.
     if (n <= MinSize)  
         return n;
@@ -174,24 +160,17 @@ int normalized_chunking_64(unsigned char *p, int n) {
 
     while (i < Mid) {
         fingerprint = (fingerprint << 1) + (GEARv2[p[i]]);
-
-        if ((!(fingerprint & FING_GEAR_32KB_64))) {// 11 1 bit
+        if ((!(fingerprint & FING_GEAR_32KB_64)))
             return i;
-        }
-
         i++;
     }
 
     while (i < n) {
         fingerprint = (fingerprint << 1) + (GEARv2[p[i]]);
-
-        if ((!(fingerprint & FING_GEAR_02KB_64))) {// 15 1 bit
+        if ((!(fingerprint & FING_GEAR_02KB_64)))
             return i;
-        }
-
         i++;
     }
-
     return n;
 }
 
@@ -277,11 +256,14 @@ int rolling_data_2byes_64(unsigned char *p, int n) {
     return n;
 }
 
-int cdc_origin_64(unsigned char *p, int n) {
-    uint64_t fingerprint = 0, digest;
+int GearCDC_OptimizedHashJudgement(unsigned char *p, int n) {
+    uint64_t fingerprint = 0;
+
     int i = MinSize;
+
     if (n <= MinSize)  
         return n;
+
     if (n > MaxSize) 
         n = MaxSize;
 

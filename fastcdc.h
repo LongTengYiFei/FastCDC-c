@@ -122,10 +122,11 @@ uint64_t LEARv2[256];
 uint64_t FING_GEAR_08KB_ls_64 = 0x0000d93003530000 << 1;
 uint64_t FING_GEAR_02KB_ls_64 = 0x0000d90003530000 << 1;
 uint64_t FING_GEAR_32KB_ls_64 = 0x0000d9f003530000 << 1;
-uint64_t FING_GEAR_08KB_64 = 0x0000d93003530000;
 
-uint64_t FING_GEAR_02KB_64 = 0x0000d90003530000;
-uint64_t FING_GEAR_32KB_64 = 0x0000d9f003530000;
+// window size 48 bytes
+uint64_t FING_GEAR_02KB_64 = 0x0000d90003530000; //  11 bit 1
+uint64_t FING_GEAR_08KB_64 = 0x0000d93003530000; //  13 bit 1
+uint64_t FING_GEAR_32KB_64 = 0x0000d9f003530000; //  15 bit 1
 
 // global variants
 struct timeval tmStart, tmEnd;
@@ -148,12 +149,12 @@ int tmpCount = 0;
 int smalChkCnt = 0;  //记录小于8KB的分块
 
 // init function
-void fastCDC_init(void);
+void fastCDC_init(expected_chunk_size);
 
 int (*chunking) (unsigned char*p, int n);
 
-// origin fastcdc function
-int cdc_origin_64(unsigned char *p, int n);
+
+int GearCDC_OptimizedHashJudgement(unsigned char *p, int n);
 
 // fastcdc with once rolling 2 bytes 
 int rolling_data_2byes_64(unsigned char *p, int n);
