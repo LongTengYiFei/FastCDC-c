@@ -1,31 +1,33 @@
 #include "fastcdc.h"
+#include "dirent.h"
+#include "sys/types.h"
 
-#define USE_CHUNKING_METHOD ORIGIN_CDC
+#define USE_CHUNKING_METHOD NORMALIZED_CDC
+#define NC_level 2
 #define MAX_CHUNK_SIZE 64
 
-int chunk_num[MAX_CHUNK_SIZE];
+uint64_t Mask_front;
+uint64_t Mask_back;
+
+int expected_chunk_size;
+int chunk_num_list[MAX_CHUNK_SIZE] = {0};
+
 void insertChunkLength(int chunkLength){
     for(int i=0; i<=MAX_CHUNK_SIZE-1; i++){
         if( i*1024 <= chunkLength && chunkLength <(i+1)*1024){
-            chunk_num[i]++;
+            chunk_num_list[i]++;
         }
     }
 }
 
-void printChunkLengthStatistic(int max_chunk_size){
+void printChunkLengthStatistic(){
     printf("-- chunk size distribution --\n");
-    // for(int i=0; i<=MAX_CHUNK_SIZE-1; i++)
-    //     printf("%dkb - %dkb num is %d\n", i, i+1, chunk_num[i]);
     for(int i=0; i<=MAX_CHUNK_SIZE-1; i++)
-        printf("%d ", chunk_num[i]);
+        printf("%d ", chunk_num_list[i]);
     printf("\n");
 }
 
-int main(int argc, char** argv) {
-    
-    // random file path 
-    char* random_file_path = argv[1];
-
+void scanOneFile(const char* random_file_path){
     // codes below are just for testing
     FILE *random_file;
     size_t readStatus = 0;
@@ -35,7 +37,7 @@ int main(int argc, char** argv) {
     memset(fileCache, 0, sizeof(CacheSize));
 
     int offset = 0, chunkLength = 0, readFlag = 0;
-    fastCDC_init(4096);
+    fastCDC_init();
 
     random_file = fopen(random_file_path, "r+");
     if (random_file == NULL) {
@@ -46,7 +48,6 @@ int main(int argc, char** argv) {
     fseek(random_file, 0, SEEK_END); // seek to end of file
     int file_size = ftell(random_file); // get current file pointer
     fseek(random_file, 0, SEEK_SET); 
-    //printf("file size is %d\n", file_size);
     int end = file_size - 1;
 
     readStatus = fread(fileCache, 1, CacheSize, random_file);
@@ -121,14 +122,48 @@ int main(int argc, char** argv) {
     // printf("sum chunk length is %lld\n", sum_chunk_length);
     // printf("small chunknum is %d\n", smalChkCnt);
 
-    printChunkLengthStatistic(64);
     // clear the items
     free(fileCache);
+}
+
+
+int main(int argc, char** argv) {
+    if(argc < 3){
+        printf("You need 2 args\n");
+        exit(-1);
+    }
+
+    // input directory
+    char* directory_path = argv[1];
+    DIR *dirp = opendir(directory_path);
+    if(dirp == NULL){
+        printf("Open dir error\n");
+        exit(-1);
+    }
+
+    // expect chunk size
+    expected_chunk_size = atoi(argv[2]) * 1024;
+    printf("ECS:%d\n", expected_chunk_size);
+
+    struct dirent *direntp;
+    while((direntp=readdir(dirp))!=NULL){
+        if(strcmp(direntp->d_name, "..") == 0 || strcmp(direntp->d_name, ".") == 0)
+            continue;
+        
+        char dirbuf[512]; 
+		memset(dirbuf, 0, sizeof(dirbuf)); 
+		strcpy(dirbuf, argv[1]); 
+		strcat(dirbuf, direntp->d_name);
+        
+        scanOneFile(dirbuf);
+    }
+
+    printChunkLengthStatistic();
     return 0;
 }
 
 // functions
-void fastCDC_init(int expected_chunk_size) {
+void fastCDC_init() {
     // 64 bit init
     for (int i = 0; i < SymbolCount; i++) {
         LEARv2[i] = GEARv2[i] << 1;
@@ -141,11 +176,28 @@ void fastCDC_init(int expected_chunk_size) {
     Mask_11_64 = 0x0000d90003530000;
     Mask_15_64 = 0x0000f90703530000;
     MinSize_divide_by_2 = MinSize / 2;
+
+    if(NC_level == 1){
+        Mask_front = Mask14;
+        Mask_back = Mask12;
+    }
+    else if(NC_level == 2){
+        Mask_front = Mask15;
+        Mask_back = Mask11;
+    }
+    else if(NC_level == 3){
+        Mask_front = Mask16;
+        Mask_back = Mask10;
+    }
+    else if(NC_level == 0)
+        ;
+    else
+        printf("Invalid NC level: %d\n", NC_level);
 }
 
 int normalized_chunking_64(unsigned char *p, int n) {
     uint64_t fingerprint = 0, digest;
-    int Mid = 8 * 1024;
+    int Mid = expected_chunk_size;
     MinSize = Mid / 4;
     MaxSize = Mid * 8;
     int i = MinSize;
@@ -160,14 +212,14 @@ int normalized_chunking_64(unsigned char *p, int n) {
 
     while (i < Mid) {
         fingerprint = (fingerprint << 1) + (GEARv2[p[i]]);
-        if ((!(fingerprint & FING_GEAR_32KB_64)))
+        if ((!(fingerprint & Mask_front)))
             return i;
         i++;
     }
 
     while (i < n) {
         fingerprint = (fingerprint << 1) + (GEARv2[p[i]]);
-        if ((!(fingerprint & FING_GEAR_02KB_64)))
+        if ((!(fingerprint & Mask_back)))
             return i;
         i++;
     }

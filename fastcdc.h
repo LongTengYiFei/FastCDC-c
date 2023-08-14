@@ -128,6 +128,18 @@ uint64_t FING_GEAR_02KB_64 = 0x0000d90003530000; //  11 bit 1
 uint64_t FING_GEAR_08KB_64 = 0x0000d93003530000; //  13 bit 1
 uint64_t FING_GEAR_32KB_64 = 0x0000d9f003530000; //  15 bit 1
 
+// NC level 1
+uint64_t Mask14 = 0x0000d9f003520000;
+uint64_t Mask12 = 0x0000d90003570000;
+
+//NC level 2
+uint64_t Mask15 = 0x0000d9f003530000;
+uint64_t Mask11 = 0x0000d90003530000;
+
+// NC level 3
+uint64_t Mask16 = 0x0000d9f003570000;
+uint64_t Mask10 = 0x0000d90003520000;
+
 // global variants
 struct timeval tmStart, tmEnd;
 struct chunk_info *users = NULL;
@@ -149,7 +161,7 @@ int tmpCount = 0;
 int smalChkCnt = 0;  //记录小于8KB的分块
 
 // init function
-void fastCDC_init(expected_chunk_size);
+void fastCDC_init();
 
 int (*chunking) (unsigned char*p, int n);
 
